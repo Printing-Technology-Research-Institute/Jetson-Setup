@@ -2,7 +2,7 @@
 # ============================================================
 #   Jetson Orin Nano - Dev Environment Setup Script
 #   Target: JetPack 6.2, L4T R36.4.x / R36.5.x
-#   Last updated: 2026-05-20
+#   Last updated: 2026-05-29
 # ============================================================
 
 set -euo pipefail
@@ -34,6 +34,20 @@ run() {
     "$@"
 }
 
+# ── CUDA PATH Auto-fix ──────────────────────────────────────
+# Ensure nvcc and CUDA libraries are visible before anything else
+_cuda_path=$(find /usr/local -maxdepth 1 -name "cuda-*" -type d 2>/dev/null | sort -V | tail -1)
+if [[ -z "$_cuda_path" ]]; then
+    _cuda_path="/usr/local/cuda"
+fi
+if [[ -d "$_cuda_path/bin" ]] && ! command -v nvcc &>/dev/null; then
+    export PATH="$_cuda_path/bin:$PATH"
+    info "CUDA PATH auto-set: $_cuda_path"
+fi
+if [[ -d "$_cuda_path/lib64" ]]; then
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$_cuda_path/lib64"
+fi
+
 # ── Config ──────────────────────────────────────────────────
 PACKAGES_DIR="${PACKAGES_DIR:-$HOME/packages/jetson_wheels}"
 CONDA_ENV="${CONDA_ENV:-tools}"
@@ -55,13 +69,12 @@ step_preflight() {
         fail=1
     fi
 
-    # torch/torchvision/torchaudio : manylinux_2_28_aarch64  (Jetson AI Lab)
+    # torch/torchvision : manylinux_2_28_aarch64  (Jetson AI Lab)
     # onnxruntime_gpu / cuda_python : linux_aarch64
     # cupy_cuda12x                  : manylinux2014_aarch64
     declare -A REQUIRED_WHEELS=(
         ["torch"]="torch-*-cp310-cp310-manylinux*_aarch64.whl"
         ["torchvision"]="torchvision-*-cp310-cp310-manylinux*_aarch64.whl"
-        ["torchaudio"]="torchaudio-*-cp310-cp310-manylinux*_aarch64.whl"
         ["onnxruntime_gpu"]="onnxruntime_gpu-*-cp310-cp310-linux_aarch64.whl"
         ["cuda_python"]="cuda_python-*-cp310-cp310-linux_aarch64.whl"
         ["cupy_cuda12x"]="cupy_cuda12x-*-cp310-cp310-manylinux*_aarch64.whl"
@@ -251,9 +264,22 @@ step5_env_setup() {
 
     info "Creating system package symlinks..."
 
-    # cv2: must not be pip-installed - link from system
-    run rm -rf "$site_pkgs/cv2"
-    run ln -s /usr/lib/python3.10/dist-packages/cv2 "$site_pkgs/"
+    # cv2: must not be pip-installed - auto-detect and link from system
+    # Jetson may place cv2 under python3/ or python3.10/ depending on build
+    local cv2_src
+    cv2_src=$(find /usr/lib/python3/dist-packages /usr/lib/python3.10/dist-packages \
+        -maxdepth 1 -name "cv2" -type d 2>/dev/null | head -1)
+    if [[ -z "$cv2_src" ]]; then
+        # fallback: search broader
+        cv2_src=$(find /usr/lib -maxdepth 4 -name "cv2" -type d 2>/dev/null | head -1)
+    fi
+    if [[ -n "$cv2_src" ]]; then
+        info "Found cv2 at: $cv2_src"
+        run rm -rf "$site_pkgs/cv2"
+        run ln -s "$cv2_src" "$site_pkgs/"
+    else
+        warn "cv2 system directory not found. OpenCV may not have been built yet (run step 3)."
+    fi
 
     # tensorrt: same rule - link from system
     local tensorrt_targets
@@ -270,7 +296,7 @@ step5_env_setup() {
     info "Verifying symlinks..."
 
     conda run -n "$CONDA_ENV" python -c "import cv2; print(f'  cv2 {cv2.__version__} OK')" 2>/dev/null \
-        || warn "cv2 import failed. Check /usr/lib/python3.10/dist-packages/cv2 exists."
+        || warn "cv2 import failed. Check that OpenCV was built (step 3) and cv2 symlink exists in $site_pkgs."
 
     conda run -n "$CONDA_ENV" python -c "import tensorrt; print(f'  tensorrt {tensorrt.__version__} OK')" 2>/dev/null \
         || warn "tensorrt import failed.\n  (a) Check /usr/lib/python3.10/dist-packages/tensorrt* exists\n  (b) Check libnvinfer.so is in LD_LIBRARY_PATH"
@@ -313,18 +339,34 @@ step7_install_packages() {
     fi
     info "Using pip: $pip_path"
 
+    # Helper: check numpy version, auto-repin if wrong
+    _check_numpy() {
+        local stage="$1"
+        local current
+        current=$(python -c "import numpy; print(numpy.__version__)" 2>/dev/null || echo "missing")
+        if [[ "$current" == "1.23.5" ]]; then
+            echo -e "  ${GREEN}[numpy]${NC} $stage: $current OK"
+        else
+            warn "[numpy] $stage: found $current -- re-pinning to 1.23.5..."
+            pip install "numpy==1.23.5" --force-reinstall -q
+            local after
+            after=$(python -c "import numpy; print(numpy.__version__)" 2>/dev/null || echo "missing")
+            echo -e "  ${GREEN}[numpy]${NC} $stage: re-pinned -> $after"
+        fi
+    }
+
     # [1/6] NumPy must come first - pinned to 1.23.5
     info "[1/6] Installing NumPy 1.23.5 (pinned)..."
     pip install "numpy==1.23.5"
+    _check_numpy "after step 1"
 
     # [2/6] Jetson-specific wheels - install in dependency order
-    #   torch first, then torchvision/torchaudio which depend on it
+    #   torch first, then torchvision which depend on it
     info "[2/6] Installing Jetson wheels (aarch64)..."
 
     declare -a CORE_WHEEL_PATTERNS=(
         "torch-*-cp310-cp310-manylinux*_aarch64.whl"
         "torchvision-*-cp310-cp310-manylinux*_aarch64.whl"
-        "torchaudio-*-cp310-cp310-manylinux*_aarch64.whl"
         "onnxruntime_gpu-*-cp310-cp310-linux_aarch64.whl"
         "cuda_python-*-cp310-cp310-linux_aarch64.whl"
         "cupy_cuda12x-*-cp310-cp310-manylinux*_aarch64.whl"
@@ -346,19 +388,23 @@ step7_install_packages() {
 
     success "Wheels done: $whl_installed installed, $whl_missing missing."
     (( whl_missing > 0 )) && warn "$whl_missing required wheels missing. Some features may not work."
+    _check_numpy "after step 2 (Jetson wheels)"
 
     # [3/6] ML packages - use --no-deps to prevent overwriting system cv2
     info "[3/6] Installing ML packages..."
     pip install scikit-learn
     pip install ultralytics easyocr --no-deps
+    _check_numpy "after step 3 (ML packages)"
 
     # [4/6] Fill in dependencies skipped by --no-deps
     info "[4/6] Installing tool dependencies..."
+    pip install fastrlock  # required by cupy
     pip install "Pillow==10.0.0" pyyaml psutil matplotlib polars
+    _check_numpy "after step 4 (tool dependencies)"
 
-    # [5/6] Re-pin NumPy in case any of the above upgraded it
-    info "[5/6] Re-pinning NumPy 1.23.5..."
-    pip install "numpy==1.23.5" --force-reinstall
+    # [5/6] Final numpy pin confirmation
+    info "[5/6] Final NumPy pin check..."
+    _check_numpy "final"
 
     # [6/6] Suppress NumPy UserWarning on activate
     local conda_prefix
@@ -404,7 +450,6 @@ chk("cv2",         lambda: __import__("cv2").__version__)
 chk("PIL",         lambda: __import__("PIL").__version__)
 chk("torch",       lambda: __import__("torch").__version__)
 chk("torchvision", lambda: __import__("torchvision").__version__)
-chk("torchaudio",  lambda: __import__("torchaudio").__version__)
 chk("tensorrt",    lambda: __import__("tensorrt").__version__)
 chk("onnxruntime", lambda: __import__("onnxruntime").__version__)
 chk("sklearn",     lambda: __import__("sklearn").__version__)
@@ -500,7 +545,7 @@ echo "   🚀 Jetson Orin Nano - Dev Environment Setup"
 echo "   🎯 Target : JetPack 6.2 / L4T R36.4.x / R36.5.x"
 echo "   🐍 Env    : $CONDA_ENV (Python $PYTHON_VER)"
 echo "   📦 Wheels : $PACKAGES_DIR"
-echo "   📅 Updated: 2026-05-20"
+echo "   📅 Updated: 2026-05-29"
 echo "  ============================================================"
 echo -e "${NC}"
 
