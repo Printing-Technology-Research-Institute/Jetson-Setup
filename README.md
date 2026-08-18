@@ -40,7 +40,7 @@ Downloaded wheels are stored under:
 ~/packages/jetson_wheels/
 ```
 
-The preflight check accepts Python 3.10 (`cp310`) aarch64 wheels using either `linux_aarch64` or `manylinux*_aarch64` tags. It also reads wheel metadata and verifies the PyTorch/Torchvision version dependency before installation.
+The preflight check accepts Python 3.10 (`cp310`) aarch64 wheels using either `linux_aarch64` or `manylinux*_aarch64` tags. It reads each wheel's metadata, prints the actual package version, and verifies the PyTorch/Torchvision dependency before installation. Exactly one matching wheel per required package must be present; ambiguous multiple versions are rejected instead of being installed arbitrarily.
 
 `gdown` is installed automatically only when a Google Drive download is required.
 
@@ -127,6 +127,10 @@ python3 -m pip install --user gdown==6.1.0
 ```
 
 Then run the installer and select `p` again.
+
+**Multiple wheel versions are found**
+
+Keep exactly one compatible wheel for each required package under `~/packages/jetson_wheels/`, then run `p` again.
 
 **cv2 has no CUDA support**
 
