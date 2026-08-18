@@ -204,21 +204,30 @@ step_preflight() {
     echo -e "\n${BOLD}${BLUE}=== 🔍 P. Preflight Check ===${NC}"
     local fail=0
     local missing=()
+    local ambiguous=()
     local pkg found
 
     echo -e "\n${BOLD}-- Wheel Directory ($PACKAGES_DIR) --${NC}"
     mkdir -p "$PACKAGES_DIR"
 
     for pkg in "${WHEEL_INSTALL_ORDER[@]}"; do
-        if ! find_unique_wheel "$pkg" &>/dev/null; then
+        local matches=()
+        mapfile -t matches < <(wheel_matches "$pkg")
+        if (( ${#matches[@]} == 0 )); then
             missing+=("$pkg")
+        elif (( ${#matches[@]} > 1 )); then
+            ambiguous+=("$pkg")
         fi
     done
 
     if (( ${#missing[@]} > 0 )) && [[ "$AUTO_DOWNLOAD_WHEELS" == "1" ]]; then
-        info "Missing/ambiguous wheels: ${missing[*]}"
+        info "Missing wheels: ${missing[*]}"
         info "AUTO_DOWNLOAD_WHEELS=1 -> downloading curated bundle from Google Drive."
         download_wheels_from_drive || fail=1
+    fi
+
+    if (( ${#ambiguous[@]} > 0 )); then
+        warn "Multiple local versions detected before download: ${ambiguous[*]}"
     fi
 
     for pkg in "${WHEEL_INSTALL_ORDER[@]}"; do
