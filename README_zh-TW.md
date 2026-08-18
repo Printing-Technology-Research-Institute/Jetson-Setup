@@ -40,7 +40,7 @@
 ~/packages/jetson_wheels/
 ```
 
-執行前檢查會接受 Python 3.10（`cp310`）aarch64 的 `linux_aarch64` 與 `manylinux*_aarch64` wheel 標籤，並讀取 wheel metadata，確認 PyTorch 與 Torchvision 的版本相依是否一致。
+執行前檢查會接受 Python 3.10（`cp310`）aarch64 的 `linux_aarch64` 與 `manylinux*_aarch64` wheel 標籤，並讀取每個 wheel 的 metadata、顯示實際版本，確認 PyTorch 與 Torchvision 的版本相依是否一致。每個必要套件只能存在一個符合的 wheel；若有多個版本，腳本會中止而不會任意選擇安裝。
 
 只有在需要從 Google Drive 下載時，腳本才會自動安裝 `gdown`。
 
@@ -127,6 +127,10 @@ python3 -m pip install --user gdown==6.1.0
 ```
 
 再重新執行安裝程式並選 `p`。
+
+**找到多個 wheel 版本**
+
+在 `~/packages/jetson_wheels/` 中，每個必要套件只保留一個相容版本，再重新執行 `p`。
 
 **cv2 沒有 CUDA**
 
