@@ -2,7 +2,7 @@
 # ============================================================
 #   Jetson Orin Nano - Dev Environment Setup Script
 #   Target : JetPack 6.2, L4T R36.4.x / R36.5.x
-#   Updated: 2026-06-06
+#   Updated: 2026-08-18
 # ============================================================
 
 set -euo pipefail
@@ -74,20 +74,20 @@ step_preflight() {
     echo -e "\n${BOLD}-- Wheel Directory ($PACKAGES_DIR) --${NC}"
     if [[ ! -d "$PACKAGES_DIR" ]]; then
         error "Directory not found: $PACKAGES_DIR"
-        echo "  -> Create it and place Jetson .whl files inside."
+        echo "  -> Create it first: mkdir -p \"$PACKAGES_DIR\""
+        echo "  -> Download JetPack 6.2 / CUDA 12.6 aarch64 wheels from:"
+        echo "     https://pypi.jetson-ai-lab.io/jp6/cu126"
         fail=1
     fi
 
-    # torch / torchvision  : manylinux_2_28_aarch64  (Jetson AI Lab)
-    # onnxruntime_gpu      : linux_aarch64
-    # cuda_python          : linux_aarch64
-    # cupy_cuda12x         : manylinux2014_aarch64
+    # Accept both linux_aarch64 and manylinux*_aarch64 wheel tags.
+    # Jetson AI Lab package tags can differ between package/version builds.
     declare -A REQUIRED_WHEELS=(
-        ["torch"]="torch-*-cp310-cp310-manylinux*_aarch64.whl"
-        ["torchvision"]="torchvision-*-cp310-cp310-manylinux*_aarch64.whl"
-        ["onnxruntime_gpu"]="onnxruntime_gpu-*-cp310-cp310-linux_aarch64.whl"
-        ["cuda_python"]="cuda_python-*-cp310-cp310-linux_aarch64.whl"
-        ["cupy_cuda12x"]="cupy_cuda12x-*-cp310-cp310-manylinux*_aarch64.whl"
+        ["torch"]="torch-*-cp310-cp310-*aarch64.whl"
+        ["torchvision"]="torchvision-*-cp310-cp310-*aarch64.whl"
+        ["onnxruntime_gpu"]="onnxruntime_gpu-*-cp310-cp310-*aarch64.whl"
+        ["cuda_python"]="cuda_python-*-cp310-cp310-*aarch64.whl"
+        ["cupy_cuda12x"]="cupy_cuda12x-*-cp310-cp310-*aarch64.whl"
     )
 
     for pkg in "${!REQUIRED_WHEELS[@]}"; do
@@ -108,14 +108,14 @@ step_preflight() {
     swap_kb=$(free | awk '/^Swap:/ {print $2}')
     swap_gb=$(( swap_kb / 1024 / 1024 ))
 
-    if   (( swap_kb >= 8 * 1024 * 1024 )); then
+    if (( swap_kb >= 8 * 1024 * 1024 )); then
         echo -e "  ${GREEN}OK${NC}  Swap ${swap_gb} GB >= 8 GB  (safe for OpenCV build)"
-    elif (( swap_kb >= 4 * 1024 * 1024 )); then
-        echo -e "  ${YELLOW}!!${NC}  Swap ${swap_gb} GB  (recommend >= 8 GB — build may OOM)"
     else
-        echo -e "  ${RED}!!${NC}  Swap ${swap_gb} GB is too low — step 3 (OpenCV build) will fail"
-        echo    "       ->  sudo fallocate -l 8G /swapfile && sudo chmod 600 /swapfile"
-        echo    "           sudo mkswap /swapfile && sudo swapon /swapfile"
+        echo -e "  ${RED}!!${NC}  Swap ${swap_gb} GB is below required 8 GB — OpenCV build may OOM"
+        echo    "       ->  Add an extra 8 GB swapfile without replacing existing swap:"
+        echo    "           sudo fallocate -l 8G /swapfile8 && sudo chmod 600 /swapfile8"
+        echo    "           sudo mkswap /swapfile8 && sudo swapon /swapfile8"
+        echo    "           grep -qF '/swapfile8 ' /etc/fstab || echo '/swapfile8 none swap sw 0 0' | sudo tee -a /etc/fstab"
         fail=1
     fi
 
@@ -124,8 +124,8 @@ step_preflight() {
     if [[ -n "$OPENCV_SCRIPT_SHA256" ]]; then
         echo -e "  ${GREEN}OK${NC}  OPENCV_SCRIPT_SHA256 is set"
     else
-        echo -e "  ${YELLOW}!!${NC}  OPENCV_SCRIPT_SHA256 not set — step 3 will ask for manual confirmation"
-        echo    "       ->  After downloading:  sha256sum OpenCV-4-11-0.sh"
+        echo -e "  ${YELLOW}WARN${NC}  [optional] OPENCV_SCRIPT_SHA256 not set — step 3 will ask for manual confirmation"
+        echo    "       ->  After downloading: sha256sum OpenCV-4-11-0.sh"
         echo    "           export OPENCV_SCRIPT_SHA256=<hash>"
     fi
 
@@ -136,12 +136,13 @@ step_preflight() {
     if (( disk_avail_gb >= 20 )); then
         echo -e "  ${GREEN}OK${NC}  Available ${disk_avail_gb} GB >= 20 GB"
     else
-        echo -e "  ${YELLOW}!!${NC}  Available ${disk_avail_gb} GB  (recommend >= 20 GB for OpenCV build)"
+        echo -e "  ${RED}!!${NC}  Available ${disk_avail_gb} GB < required 20 GB for OpenCV build"
+        fail=1
     fi
 
     echo ""
     if (( fail == 1 )); then
-        error "Preflight failed. Fix the items above before running the installer."
+        error "Preflight failed. Fix the required items above before running the installer."
         return 1
     else
         success "Preflight passed. Safe to proceed."
@@ -213,7 +214,7 @@ step4_opencv_cuda() {
         return 0
     fi
 
-    run sudo apt purge -y 'libopencv*'
+    # Download and verify before removing the existing OpenCV installation.
     run wget -O OpenCV-4-11-0.sh \
         https://github.com/Qengineering/Install-OpenCV-Jetson-Nano/raw/main/OpenCV-4-11-0.sh
 
@@ -230,6 +231,7 @@ step4_opencv_cuda() {
         confirm "Run without verification?" || { rm -f OpenCV-4-11-0.sh; return 1; }
     fi
 
+    run sudo apt purge -y 'libopencv*'
     run chmod 755 ./OpenCV-4-11-0.sh
     run ./OpenCV-4-11-0.sh || { error "OpenCV build failed. Check logs."; return 1; }
 
@@ -396,11 +398,11 @@ step7_install_packages() {
     info "[2/6] Installing Jetson wheels (aarch64)..."
 
     declare -a CORE_WHEEL_PATTERNS=(
-        "torch-*-cp310-cp310-linux_aarch64.whl"
-        "torchvision-*-cp310-cp310-linux_aarch64.whl"
-        "onnxruntime_gpu-*-cp310-cp310-linux_aarch64.whl"
-        "cuda_python-*-cp310-cp310-linux_aarch64.whl"
-        "cupy_cuda12x-*-cp310-cp310-manylinux*_aarch64.whl"
+        "torch-*-cp310-cp310-*aarch64.whl"
+        "torchvision-*-cp310-cp310-*aarch64.whl"
+        "onnxruntime_gpu-*-cp310-cp310-*aarch64.whl"
+        "cuda_python-*-cp310-cp310-*aarch64.whl"
+        "cupy_cuda12x-*-cp310-cp310-*aarch64.whl"
     )
 
     local whl_installed=0 whl_missing=0
@@ -420,7 +422,10 @@ step7_install_packages() {
     set -e
 
     success "Wheels done: $whl_installed installed, $whl_missing missing."
-    [[ $whl_missing -gt 0 ]] && warn "$whl_missing required wheels missing. Some features may not work."
+    if (( whl_missing > 0 )); then
+        error "$whl_missing required wheels are missing. Aborting package install."
+        return 1
+    fi
     _check_numpy "after [2/6]"
 
     # ── [3/6]  ML packages ───────────────────────────────────
@@ -598,7 +603,7 @@ echo "  ║   🚀  Jetson Orin Nano — Dev Environment Setup          ║"
 echo "  ║   🎯  Target  : JetPack 6.2 / L4T R36.4.x / R36.5.x   ║"
 echo "  ║   🐍  Env     : $CONDA_ENV (Python $PYTHON_VER)                        ║"
 echo "  ║   📦  Wheels  : $PACKAGES_DIR"
-echo "  ║   📅  Updated : 2026-06-06                              ║"
+echo "  ║   📅  Updated : 2026-08-18                              ║"
 echo "  ╚══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -626,7 +631,7 @@ while true; do
     show_menu
     read -rp "$(echo -e "${BOLD}Select: ${NC}")" opt
     case $opt in
-        p) step_preflight ;;
+        p) step_preflight || true ;;
         1) step1_system_base ;;
         2) run sudo apt update && step3_jtop_fix ;;
         3) step4_opencv_cuda ;;
