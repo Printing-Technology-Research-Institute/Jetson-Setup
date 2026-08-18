@@ -31,7 +31,38 @@ Or download directly from Google Drive: 📁 [Jetson Wheels](https://drive.googl
 - CUDA Python
 - CuPy (CUDA 12x)
 
+The installer accepts both `linux_aarch64` and `manylinux*_aarch64` wheel tags for Python 3.10 (`cp310`).
+
 > `cv2` and `tensorrt` do not need to be downloaded. The script automatically creates symlinks from the system path.
+
+---
+
+## 🧰 First-time Preparation
+
+Create the wheel directory:
+
+```bash
+mkdir -p ~/packages/jetson_wheels
+```
+
+Check current swap:
+
+```bash
+free -h
+swapon --show
+```
+
+If total swap is below 8 GB, add an extra 8 GB swapfile without replacing existing swap:
+
+```bash
+sudo fallocate -l 8G /swapfile8
+sudo chmod 600 /swapfile8
+sudo mkswap /swapfile8
+sudo swapon /swapfile8
+grep -qF '/swapfile8 ' /etc/fstab || echo '/swapfile8 none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+`OPENCV_SCRIPT_SHA256` is optional. If it is not set, step 3 asks for confirmation before running the downloaded OpenCV build script.
 
 ---
 
