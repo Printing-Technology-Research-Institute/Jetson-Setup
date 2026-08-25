@@ -14,9 +14,10 @@
 | 項目 | 需求 |
 |------|------|
 | JetPack | 6.2（L4T R36.4.x / R36.5.x） |
-| Swap | ≥ 8 GB（編譯 OpenCV CUDA 必要） |
 | 可用磁碟空間 | ≥ 20 GB |
 | 網路 | 第一次自動下載 wheel 時需要 |
+
+編譯 OpenCV CUDA 需要總 Swap ≥ 8 GB。使用者選擇 `a` 時，如果目前 Swap 不足，安裝程式會自動新增 `/swapfile8` 8 GB Swap，不需要手動處理。
 
 ---
 
@@ -42,32 +43,9 @@
 
 執行前檢查會接受 Python 3.10（`cp310`）aarch64 的 `linux_aarch64` 與 `manylinux*_aarch64` wheel 標籤，並讀取每個 wheel 的 metadata、顯示實際版本，確認 PyTorch 與 Torchvision 的版本相依是否一致。每個必要套件只能存在一個符合的 wheel；若有多個版本，腳本會中止而不會任意選擇安裝。
 
-只有在需要從 Google Drive 下載時，腳本才會自動安裝 `gdown`。
+只有需要從 Google Drive 下載時，腳本才會自動安裝 `gdown`。
 
 > `cv2` 與 `tensorrt` 不會下載 wheel，腳本會將 Jetson 系統套件連結至 conda 環境。
-
----
-
-## 🧰 第一次執行前準備
-
-確認目前 Swap：
-
-```bash
-free -h
-swapon --show
-```
-
-若總 Swap 小於 8 GB，新增一個 8 GB Swap，不取代原本已存在的 Swap：
-
-```bash
-sudo fallocate -l 8G /swapfile8
-sudo chmod 600 /swapfile8
-sudo mkswap /swapfile8
-sudo swapon /swapfile8
-grep -qF '/swapfile8 ' /etc/fstab || echo '/swapfile8 none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-`OPENCV_SCRIPT_SHA256` 為選填。若未設定，步驟 3 會在執行下載的 OpenCV 編譯腳本前要求手動確認。
 
 ---
 
@@ -78,7 +56,29 @@ chmod +x jetson_setup.sh
 bash jetson_setup.sh
 ```
 
-全新設備先選 `p`。缺少的 wheel 會自動從 Google Drive 下載並驗證；執行前檢查全部通過後，再選 `a`。
+全新設備直接選：
+
+```text
+a
+```
+
+`a` 會自動完成整個準備與安裝流程：
+
+```text
+Swap 不足時自動建立
+→ 自動下載並驗證 wheel
+→ 執行前檢查
+→ 系統基礎設定
+→ 系統更新
+→ OpenCV CUDA
+→ Conda 環境
+→ 套件安裝
+→ 環境驗證
+```
+
+不需要先執行 `p`，也不需要手動準備 wheel 或 Swap。
+
+> 具有破壞性或安全風險的操作仍會要求確認，例如重新編譯 OpenCV，以及未設定 SHA256 時執行下載的 OpenCV 編譯腳本。
 
 ---
 
@@ -92,7 +92,7 @@ p) 🔍 執行前檢查     (自動下載 wheels / swap / disk)
 4) 🐍 Conda 環境      (建立環境 + symlinks)
 5) 📦 套件安裝        (已驗證 wheels + pip)
 v) ✅ 環境驗證        (檢查套件 + GPU)
-a) ⚡ 全部執行        (p → 1 → 2 → 3 → 4 → 5 → v)
+a) ⚡ 全部執行        (自動準備 → p → 1 → 2 → 3 → 4 → 5 → v)
 q) 👋 離開
 ```
 
@@ -107,12 +107,16 @@ q) 👋 離開
 | `AUTO_DOWNLOAD_WHEELS` | `1` | 缺少 wheel 時自動從 Google Drive 下載 |
 | `GDRIVE_WHEELS_URL` | 內建 Drive 資料夾 | 自訂 Google Drive wheel 資料夾 |
 | `GDOWN_VERSION` | `6.1.0` | 自動下載使用的 gdown 版本 |
+| `AUTO_CREATE_SWAP` | `1` | `a` 模式在總 Swap 小於 8 GB 時自動新增 Swap |
+| `SWAPFILE_PATH` | `/swapfile8` | 自動建立的 Swap 路徑 |
+| `SWAPFILE_SIZE_GB` | `8` | 自動建立的 Swap 大小（GB） |
 | `OPENCV_SCRIPT_SHA256` | 空 | OpenCV 編譯腳本的選填 SHA256 |
 
-若要關閉自動下載：
+需要時可以關閉自動下載或自動建立 Swap：
 
 ```bash
 export AUTO_DOWNLOAD_WHEELS=0
+export AUTO_CREATE_SWAP=0
 ```
 
 ---
@@ -126,11 +130,15 @@ rm -rf ~/.cache/jetson-setup/gdown
 python3 -m pip install --user gdown==6.1.0
 ```
 
-再重新執行安裝程式並選 `p`。
+重新執行安裝程式後再選 `a`。
 
 **找到多個 wheel 版本**
 
-在 `~/packages/jetson_wheels/` 中，每個必要套件只保留一個相容版本，再重新執行 `p`。
+在 `~/packages/jetson_wheels/` 中，每個必要套件只保留一個相容版本，再重新執行 `a`。
+
+**既有 `/swapfile8` 無法啟用**
+
+安裝程式會刻意拒絕覆寫既有但不是有效 Swap 的檔案。請先人工確認該檔案用途，再決定是否刪除或替換。
 
 **cv2 沒有 CUDA**
 
