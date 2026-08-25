@@ -14,9 +14,10 @@ An interactive Bash script for setting up a full deep learning stack on Jetson O
 | Item | Requirement |
 |------|-------------|
 | JetPack | 6.2 (L4T R36.4.x / R36.5.x) |
-| Swap | ≥ 8 GB (required for OpenCV CUDA build) |
 | Free disk | ≥ 20 GB |
 | Internet | Required for first-run wheel download |
+
+Swap ≥ 8 GB is required for the OpenCV CUDA build. When option `a` is selected, the installer automatically adds an extra 8 GB swapfile at `/swapfile8` if total swap is too low.
 
 ---
 
@@ -40,34 +41,11 @@ Downloaded wheels are stored under:
 ~/packages/jetson_wheels/
 ```
 
-The preflight check accepts Python 3.10 (`cp310`) aarch64 wheels using either `linux_aarch64` or `manylinux*_aarch64` tags. It reads each wheel's metadata, prints the actual package version, and verifies the PyTorch/Torchvision dependency before installation. Exactly one matching wheel per required package must be present; ambiguous multiple versions are rejected instead of being installed arbitrarily.
+The preflight check accepts Python 3.10 (`cp310`) aarch64 wheels using either `linux_aarch64` or `manylinux*_aarch64` tags. It reads each wheel's metadata, prints the actual package version, and verifies the PyTorch/Torchvision dependency before installation. Exactly one matching wheel per required package must be present; ambiguous multiple versions are rejected.
 
 `gdown` is installed automatically only when a Google Drive download is required.
 
 > `cv2` and `tensorrt` are not downloaded as wheels. The installer links the Jetson system packages into the conda environment.
-
----
-
-## 🧰 First-time Preparation
-
-Check current swap:
-
-```bash
-free -h
-swapon --show
-```
-
-If total swap is below 8 GB, add an extra 8 GB swapfile without replacing existing swap:
-
-```bash
-sudo fallocate -l 8G /swapfile8
-sudo chmod 600 /swapfile8
-sudo mkswap /swapfile8
-sudo swapon /swapfile8
-grep -qF '/swapfile8 ' /etc/fstab || echo '/swapfile8 none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-`OPENCV_SCRIPT_SHA256` is optional. If it is not set, step 3 asks for confirmation before running the downloaded OpenCV build script.
 
 ---
 
@@ -78,7 +56,29 @@ chmod +x jetson_setup.sh
 bash jetson_setup.sh
 ```
 
-For a fresh device, select `p`. Missing wheels are downloaded automatically from Google Drive, then validated. After preflight passes, select `a`.
+For a fresh device, select:
+
+```text
+a
+```
+
+Option `a` performs the complete bootstrap and installation flow:
+
+```text
+auto-create swap if needed
+→ auto-download and validate wheels
+→ preflight
+→ system base
+→ system update
+→ OpenCV CUDA
+→ conda environment
+→ package install
+→ validation
+```
+
+No separate `p` step or manual wheel preparation is required.
+
+> Destructive or security-sensitive operations still request confirmation, such as rebuilding OpenCV or running the OpenCV build script without a configured SHA256.
 
 ---
 
@@ -92,7 +92,7 @@ p) 🔍 Preflight check  (auto-download wheels / swap / disk)
 4) 🐍 Conda env        (create env + symlinks)
 5) 📦 Package install  (validated wheels + pip)
 v) ✅ Validate         (check packages + GPU)
-a) ⚡ Run all          (p → 1 → 2 → 3 → 4 → 5 → v)
+a) ⚡ Run all          (auto-prepare → p → 1 → 2 → 3 → 4 → 5 → v)
 q) 👋 Quit
 ```
 
@@ -107,12 +107,16 @@ q) 👋 Quit
 | `AUTO_DOWNLOAD_WHEELS` | `1` | Automatically download missing wheels from Google Drive |
 | `GDRIVE_WHEELS_URL` | bundled Drive folder | Override the Google Drive wheel folder |
 | `GDOWN_VERSION` | `6.1.0` | gdown version used for automatic downloads |
+| `AUTO_CREATE_SWAP` | `1` | Let option `a` automatically add swap when total swap is below 8 GB |
+| `SWAPFILE_PATH` | `/swapfile8` | Auto-created swapfile path |
+| `SWAPFILE_SIZE_GB` | `8` | Auto-created swapfile size in GB |
 | `OPENCV_SCRIPT_SHA256` | _(empty)_ | Optional SHA256 of the OpenCV build script |
 
-Disable automatic wheel download if needed:
+Disable automatic wheel download or automatic swap creation if needed:
 
 ```bash
 export AUTO_DOWNLOAD_WHEELS=0
+export AUTO_CREATE_SWAP=0
 ```
 
 ---
@@ -126,11 +130,15 @@ rm -rf ~/.cache/jetson-setup/gdown
 python3 -m pip install --user gdown==6.1.0
 ```
 
-Then run the installer and select `p` again.
+Then run the installer and select `a` again.
 
 **Multiple wheel versions are found**
 
-Keep exactly one compatible wheel for each required package under `~/packages/jetson_wheels/`, then run `p` again.
+Keep exactly one compatible wheel for each required package under `~/packages/jetson_wheels/`, then select `a` again.
+
+**Existing `/swapfile8` cannot be activated**
+
+The installer intentionally refuses to overwrite an existing non-swap file. Inspect it manually before deleting or replacing it.
 
 **cv2 has no CUDA support**
 
