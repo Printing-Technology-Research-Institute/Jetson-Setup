@@ -55,6 +55,9 @@ fi
 PACKAGES_DIR="${PACKAGES_DIR:-$HOME/packages/jetson_wheels}"
 CONDA_ENV="${CONDA_ENV:-tools}"
 PYTHON_VER="3.10"
+CONDA_HOME="${CONDA_HOME:-$HOME/miniforge3}"
+MINIFORGE_VERSION="${MINIFORGE_VERSION:-26.5.3-0}"
+MINIFORGE_SHA256="${MINIFORGE_SHA256:-0391e42075a7632e9665d6e728387ee6b905f6c3e704d3513e1c1133d0d69b89}"
 
 GDRIVE_WHEELS_URL="${GDRIVE_WHEELS_URL:-https://drive.google.com/drive/folders/1zOi0G1CkETV6aR9FI9y4iTQOurEH2T1v?usp=sharing}"
 AUTO_DOWNLOAD_WHEELS="${AUTO_DOWNLOAD_WHEELS:-1}"
@@ -475,21 +478,37 @@ PYEOF
 step5_env_setup() {
     echo -e "\n${BOLD}${BLUE}=== 🐍 4. Conda Environment & Symlinks ===${NC}"
 
-    if ! command -v conda &>/dev/null; then
-        run wget -O Miniconda3-latest-Linux-aarch64.sh \
-            https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh
-        run bash Miniconda3-latest-Linux-aarch64.sh -b -p "$HOME/miniconda3"
+    if [[ -d "$HOME/miniconda3" && "$CONDA_HOME" != "$HOME/miniconda3" ]]; then
+        warn "Legacy Miniconda detected at $HOME/miniconda3; leaving it untouched and using Miniforge at $CONDA_HOME."
     fi
 
-    source "$HOME/miniconda3/etc/profile.d/conda.sh" || {
-        error "Conda init failed. Check install path: $HOME/miniconda3"
+    if [[ ! -x "$CONDA_HOME/bin/conda" ]]; then
+        local installer="Miniforge3-${MINIFORGE_VERSION}-Linux-aarch64.sh"
+        local url="https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/${installer}"
+
+        run wget -O "$installer" "$url"
+        echo "$MINIFORGE_SHA256  $installer" | sha256sum -c - || {
+            error "Miniforge checksum mismatch. Refusing to install."
+            rm -f "$installer"
+            return 1
+        }
+        run bash "$installer" -b -p "$CONDA_HOME"
+        rm -f "$installer"
+        success "Miniforge $MINIFORGE_VERSION installed at $CONDA_HOME."
+    else
+        info "Miniforge already installed: $CONDA_HOME"
+    fi
+
+    source "$CONDA_HOME/etc/profile.d/conda.sh" || {
+        error "Conda init failed. Check install path: $CONDA_HOME"
         return 1
     }
+    export CONDA_ENVS_PATH="$CONDA_HOME/envs"
 
-    if ! conda env list | grep -qE "^${CONDA_ENV}\s"; then
-        run conda create -n "$CONDA_ENV" python="$PYTHON_VER" -y
+    if [[ ! -d "$CONDA_HOME/envs/$CONDA_ENV" ]]; then
+        run conda create -n "$CONDA_ENV" --override-channels -c conda-forge python="$PYTHON_VER" -y
     else
-        info "Conda env '$CONDA_ENV' already exists. Skipping create."
+        info "Conda env '$CONDA_ENV' already exists under $CONDA_HOME. Skipping create."
     fi
 
     local site_pkgs
@@ -550,10 +569,11 @@ step5_env_setup() {
 step7_install_packages() {
     echo -e "\n${BOLD}${BLUE}=== 📦 5. Package Install ===${NC}"
 
-    source "$HOME/miniconda3/etc/profile.d/conda.sh" || {
+    source "$CONDA_HOME/etc/profile.d/conda.sh" || {
         error "Conda init failed. Run step 4 first."
         return 1
     }
+    export CONDA_ENVS_PATH="$CONDA_HOME/envs"
     eval "$(conda shell.bash hook)"
     conda activate "$CONDA_ENV" || {
         error "Cannot activate '$CONDA_ENV'. Run step 4 first."
@@ -644,10 +664,11 @@ PYEOF
 step_validate() {
     echo -e "\n${BOLD}${BLUE}=== ✅ V. Environment Validation ===${NC}"
 
-    source "$HOME/miniconda3/etc/profile.d/conda.sh" || {
+    source "$CONDA_HOME/etc/profile.d/conda.sh" || {
         error "Conda init failed. Run step 4 first."
         return 1
     }
+    export CONDA_ENVS_PATH="$CONDA_HOME/envs"
     eval "$(conda shell.bash hook)"
     conda activate "$CONDA_ENV" || {
         error "Cannot activate '$CONDA_ENV'."
@@ -759,7 +780,7 @@ show_menu() {
     echo "  1)  🔧  System base       (snap fix + Chinese input)"
     echo "  2)  🔄  System update     (apt update + jtop)"
     echo "  3)  📷  OpenCV CUDA       (full rebuild, ~2 hr)"
-    echo "  4)  🐍  Conda env         (create env + symlinks)"
+    echo "  4)  🐍  Conda env         (Miniforge + env + symlinks)"
     echo "  5)  📦  Package install   (validated wheels + pip packages)"
     echo "  v)  ✅  Validate          (check all packages + GPU)"
     echo "  a)  ⚡  Run all           (auto-prepare → p → 1 → 2 → 3 → 4 → 5 → v)"
