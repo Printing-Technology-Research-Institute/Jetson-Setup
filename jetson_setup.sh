@@ -371,41 +371,36 @@ step1_system_base() {
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  2. jtop Install & JetPack Version Fix
+#  2. jtop Install & JetPack Detection
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 step3_jtop_fix() {
-    echo -e "\n${BOLD}${BLUE}=== 🔄 2. jtop Install & JetPack Version Fix ===${NC}"
-    run sudo pip3 install -U jetson-stats
+    echo -e "\n${BOLD}${BLUE}=== 🔄 2. jtop Install & JetPack Detection ===${NC}"
 
-    local varfile
-    varfile=$(sudo find / -name "jetson_variables.py" -path "*/jtop/*" 2>/dev/null | head -1)
-
-    if [[ -n "$varfile" ]]; then
-        info "Patching JetPack version map in $varfile ..."
-        sudo python3 - "$varfile" <<'PYEOF'
-import re, sys
-path = sys.argv[1]
-with open(path, 'r') as f:
-    content = f.read()
-new_map = (
-    '    "36.4.0": "6.2",\n'
-    '    "36.4.3": "6.2",\n'
-    '    "36.4.4": "6.2.1",\n'
-    '    "36.4.7": "6.2.1",'
-)
-if "36.4.7" not in content:
-    content = re.sub(r'(NVIDIA_JETPACK\s*=\s*\{)', r'\1\n' + new_map, content)
-    with open(path, 'w') as f:
-        f.write(content)
-    print(f"[OK] Updated {path}")
-else:
-    print(f"[INFO] {path} already up to date.")
-PYEOF
-        run sudo systemctl restart jtop.service
-        success "jtop fix done."
-    else
-        warn "jetson_variables.py not found. Please check manually."
+    if ! python3 -m pip --version &>/dev/null; then
+        info "System Python pip not found. Installing python3-pip..."
+        run sudo apt-get install -y python3-pip
     fi
+
+    info "Installing/upgrading jetson-stats with system Python..."
+    if ! sudo python3 -m pip install -U jetson-stats; then
+        if python3 -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+            warn "Standard system install was blocked. Retrying with --break-system-packages."
+            run sudo python3 -m pip install --break-system-packages -U jetson-stats
+        else
+            error "jetson-stats installation failed."
+            return 1
+        fi
+    fi
+
+    if command -v jtop &>/dev/null; then
+        info "Installed: $(jtop --version 2>&1 | head -1)"
+    else
+        error "jtop command not found after installing jetson-stats."
+        return 1
+    fi
+
+    run sudo systemctl restart jtop.service
+    success "jtop installed. Using upstream JetPack detection (no site-package patch)."
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -748,7 +743,7 @@ show_menu() {
     echo -e "\n${BOLD}${CYAN}🛠  Jetson Orin Nano — Setup Menu${NC}"
     echo "  p)  🔍  Preflight check   (auto-download wheels / swap / disk)"
     echo "  1)  🔧  System base       (snap fix + Chinese input)"
-    echo "  2)  🔄  System update     (apt update + jtop fix)"
+    echo "  2)  🔄  System update     (apt update + jtop)"
     echo "  3)  📷  OpenCV CUDA       (full rebuild, ~2 hr)"
     echo "  4)  🐍  Conda env         (create env + symlinks)"
     echo "  5)  📦  Package install   (validated wheels + pip packages)"
