@@ -5,7 +5,7 @@
 An interactive Bash script for setting up a full deep learning stack on Jetson Orin Nano.
 
 - **Target**: JetPack 6.2 / L4T R36.4.x / R36.5.x
-- **Python**: 3.10 (Miniconda, conda env)
+- **Python**: 3.10 (Miniforge, conda env)
 
 ---
 
@@ -50,6 +50,28 @@ The preflight check accepts Python 3.10 (`cp310`) aarch64 wheels using either `l
 
 ---
 
+## 🐍 Conda / Miniforge
+
+The installer uses Miniforge instead of Miniconda so environment creation uses `conda-forge` directly and does not require accepting Anaconda repository Terms of Service.
+
+Current pinned installer:
+
+```text
+Miniforge 26.5.3-0
+Linux aarch64
+~/miniforge3
+```
+
+The installer verifies the official SHA256 before installation and creates the `tools` environment with:
+
+```bash
+conda create -n tools --override-channels -c conda-forge python=3.10 -y
+```
+
+If an older `~/miniconda3` directory exists, it is left untouched. The setup script only uses `~/miniforge3` by default.
+
+---
+
 ## 🚀 Quick Start
 
 ```bash
@@ -72,7 +94,7 @@ auto-create swap if needed
 → system base
 → system update
 → OpenCV CUDA
-→ conda environment
+→ Miniforge / conda environment
 → install Drive wheels + cuda-python from PyPI
 → validation
 ```
@@ -88,9 +110,9 @@ No separate `p` step or manual wheel/Swap preparation is required.
 ```text
 p) 🔍 Preflight check  (auto-download wheels / swap / disk)
 1) 🔧 System base      (snap fix + Chinese input)
-2) 🔄 System update    (apt update + jtop fix)
+2) 🔄 System update    (apt update + jtop)
 3) 📷 OpenCV CUDA      (full rebuild, ~2hr)
-4) 🐍 Conda env        (create env + symlinks)
+4) 🐍 Conda env        (Miniforge + env + symlinks)
 5) 📦 Package install  (validated wheels + pip)
 v) ✅ Validate         (check packages + GPU)
 a) ⚡ Run all          (auto-prepare → p → 1 → 2 → 3 → 4 → 5 → v)
@@ -104,6 +126,8 @@ q) 👋 Quit
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CONDA_ENV` | `tools` | Conda environment name |
+| `CONDA_HOME` | `~/miniforge3` | Miniforge installation root |
+| `MINIFORGE_VERSION` | `26.5.3-0` | Pinned Miniforge release |
 | `PACKAGES_DIR` | `~/packages/jetson_wheels` | Wheel directory |
 | `AUTO_DOWNLOAD_WHEELS` | `1` | Automatically download missing wheels from Google Drive |
 | `GDRIVE_WHEELS_URL` | bundled Drive folder | Override the Google Drive wheel folder |
@@ -134,6 +158,14 @@ rm -rf ~/.cache/jetson-setup/gdown
 ```
 
 The installer recreates it automatically if system Python does not provide `pip`.
+
+**Legacy Miniconda exists**
+
+The installer does not remove it automatically. After the full setup is verified, inspect it before deciding whether to remove it:
+
+```bash
+ls -ld ~/miniconda3 ~/miniforge3
+```
 
 **Multiple wheel versions are found**
 
