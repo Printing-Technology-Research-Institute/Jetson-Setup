@@ -2,7 +2,7 @@
 # ============================================================
 #   Jetson Orin Nano - Dev Environment Setup Script
 #   Target : JetPack 6.2, L4T R36.4.x / R36.5.x
-#   Updated: 2026-08-18
+#   Updated: 2026-08-25
 # ============================================================
 
 set -euo pipefail
@@ -60,6 +60,10 @@ GDRIVE_WHEELS_URL="${GDRIVE_WHEELS_URL:-https://drive.google.com/drive/folders/1
 AUTO_DOWNLOAD_WHEELS="${AUTO_DOWNLOAD_WHEELS:-1}"
 GDOWN_VERSION="${GDOWN_VERSION:-6.1.0}"
 GDOWN_BIN=""
+
+AUTO_CREATE_SWAP="${AUTO_CREATE_SWAP:-1}"
+SWAPFILE_PATH="${SWAPFILE_PATH:-/swapfile8}"
+SWAPFILE_SIZE_GB="${SWAPFILE_SIZE_GB:-8}"
 
 # Set to sha256 of OpenCV-4-11-0.sh before running step 3
 # e.g. export OPENCV_SCRIPT_SHA256=$(sha256sum OpenCV-4-11-0.sh | awk '{print $1}')
@@ -197,6 +201,54 @@ except Exception as exc:
 PYEOF
 }
 
+ensure_swap_for_full_install() {
+    local swap_kb swap_gb
+    swap_kb=$(free | awk '/^Swap:/ {print $2}')
+    swap_gb=$(( swap_kb / 1024 / 1024 ))
+
+    if (( swap_kb >= 8 * 1024 * 1024 )); then
+        success "Swap ${swap_gb} GB >= 8 GB."
+        return 0
+    fi
+
+    if [[ "$AUTO_CREATE_SWAP" != "1" ]]; then
+        error "Swap ${swap_gb} GB < 8 GB and AUTO_CREATE_SWAP=$AUTO_CREATE_SWAP."
+        return 1
+    fi
+
+    info "Swap ${swap_gb} GB < 8 GB. Auto-creating ${SWAPFILE_SIZE_GB} GB at $SWAPFILE_PATH..."
+
+    if swapon --show=NAME --noheadings 2>/dev/null | grep -Fxq "$SWAPFILE_PATH"; then
+        info "$SWAPFILE_PATH is already active."
+    elif [[ -e "$SWAPFILE_PATH" ]]; then
+        warn "$SWAPFILE_PATH already exists. Trying to activate it without overwriting."
+        run sudo chmod 600 "$SWAPFILE_PATH"
+        if ! run sudo swapon "$SWAPFILE_PATH"; then
+            error "$SWAPFILE_PATH exists but is not a valid swapfile. Refusing to overwrite it."
+            return 1
+        fi
+    else
+        run sudo fallocate -l "${SWAPFILE_SIZE_GB}G" "$SWAPFILE_PATH"
+        run sudo chmod 600 "$SWAPFILE_PATH"
+        run sudo mkswap "$SWAPFILE_PATH"
+        run sudo swapon "$SWAPFILE_PATH"
+    fi
+
+    if ! grep -qF "$SWAPFILE_PATH none swap sw 0 0" /etc/fstab; then
+        echo "$SWAPFILE_PATH none swap sw 0 0" | sudo tee -a /etc/fstab >/dev/null
+        info "Added $SWAPFILE_PATH to /etc/fstab."
+    fi
+
+    swap_kb=$(free | awk '/^Swap:/ {print $2}')
+    swap_gb=$(( swap_kb / 1024 / 1024 ))
+    if (( swap_kb < 8 * 1024 * 1024 )); then
+        error "Swap is still ${swap_gb} GB after auto-setup."
+        return 1
+    fi
+
+    success "Swap ready: ${swap_gb} GB total."
+}
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  P. Preflight Check
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -264,10 +316,7 @@ step_preflight() {
         echo -e "  ${GREEN}OK${NC}  Swap ${swap_gb} GB >= 8 GB  (safe for OpenCV build)"
     else
         echo -e "  ${RED}!!${NC}  Swap ${swap_gb} GB is below required 8 GB — OpenCV build may OOM"
-        echo    "       ->  Add an extra 8 GB swapfile without replacing existing swap:"
-        echo    "           sudo fallocate -l 8G /swapfile8 && sudo chmod 600 /swapfile8"
-        echo    "           sudo mkswap /swapfile8 && sudo swapon /swapfile8"
-        echo    "           grep -qF '/swapfile8 ' /etc/fstab || echo '/swapfile8 none swap sw 0 0' | sudo tee -a /etc/fstab"
+        echo    "       -> Run option a to auto-create $SWAPFILE_PATH, or create swap manually."
         fail=1
     fi
 
@@ -686,7 +735,7 @@ show_menu() {
     echo "  4)  🐍  Conda env         (create env + symlinks)"
     echo "  5)  📦  Package install   (validated wheels + pip packages)"
     echo "  v)  ✅  Validate          (check all packages + GPU)"
-    echo "  a)  ⚡  Run all           (p → 1 → 2 → 3 → 4 → 5 → v)"
+    echo "  a)  ⚡  Run all           (auto-prepare → p → 1 → 2 → 3 → 4 → 5 → v)"
     echo "  q)  👋  Quit"
 }
 
@@ -699,7 +748,7 @@ echo "  ║   🚀  Jetson Orin Nano — Dev Environment Setup          ║"
 echo "  ║   🎯  Target  : JetPack 6.2 / L4T R36.4.x / R36.5.x   ║"
 echo "  ║   🐍  Env     : $CONDA_ENV (Python $PYTHON_VER)                        ║"
 echo "  ║   📦  Wheels  : $PACKAGES_DIR"
-echo "  ║   📅  Updated : 2026-08-18                              ║"
+echo "  ║   📅  Updated : 2026-08-25                              ║"
 echo "  ╚══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -734,6 +783,8 @@ while true; do
         5) step7_install_packages ;;
         v) step_validate ;;
         a)
+            echo -e "\n${BOLD}${BLUE}=== ⚡ Auto Prepare ===${NC}"
+            ensure_swap_for_full_install || { error "Automatic swap setup failed. Aborting full install."; continue; }
             step_preflight || { error "Preflight failed. Aborting full install."; continue; }
             step1_system_base
             run sudo apt update
