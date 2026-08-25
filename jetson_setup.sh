@@ -392,15 +392,29 @@ step3_jtop_fix() {
         fi
     fi
 
-    if command -v jtop &>/dev/null; then
-        info "Installed: $(jtop --version 2>&1 | head -1)"
-    else
+    local jtop_bin
+    jtop_bin=$(command -v jtop || true)
+    if [[ -z "$jtop_bin" ]]; then
         error "jtop command not found after installing jetson-stats."
         return 1
     fi
+    info "Installed: $($jtop_bin --version 2>&1 | head -1)"
 
-    run sudo systemctl restart jtop.service
-    success "jtop installed. Using upstream JetPack detection (no site-package patch)."
+    if ! sudo systemctl cat jtop.service &>/dev/null; then
+        info "jtop.service is missing after wheel installation. Running upstream service installer..."
+        run sudo "$jtop_bin" --install-service
+    fi
+
+    run sudo systemctl daemon-reload
+    run sudo systemctl enable --now jtop.service
+
+    if sudo systemctl is-active --quiet jtop.service; then
+        success "jtop.service is active. Using upstream JetPack detection."
+    else
+        error "jtop.service is not active after installation."
+        sudo journalctl -u jtop.service -n 50 --no-pager || true
+        return 1
+    fi
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
