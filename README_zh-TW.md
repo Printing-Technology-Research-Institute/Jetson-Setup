@@ -15,7 +15,7 @@
 |------|------|
 | JetPack | 6.2（L4T R36.4.x / R36.5.x） |
 | 可用磁碟空間 | ≥ 20 GB |
-| 網路 | 第一次自動下載 wheel 時需要 |
+| 網路 | 第一次自動下載時需要 |
 
 編譯 OpenCV CUDA 需要總 Swap ≥ 8 GB。使用者選擇 `a` 時，如果目前 Swap 不足，安裝程式會自動新增 `/swapfile8` 8 GB Swap，不需要手動處理。
 
@@ -27,13 +27,14 @@
 
 📁 [Jetson Wheels](https://drive.google.com/drive/folders/1zOi0G1CkETV6aR9FI9y4iTQOurEH2T1v?usp=sharing)
 
-必要套件：
+Google Drive 內的套件：
 
 - PyTorch
 - Torchvision
 - ONNX Runtime GPU
-- CUDA Python
 - CuPy（CUDA 12x）
+
+`cuda-python` 不要求放在 Google Drive。腳本會在步驟 5 建立好 Python 3.10 conda 環境後，自動從 PyPI 安裝 `cuda-python==12.6.2`。
 
 下載後會存放於：
 
@@ -41,9 +42,9 @@
 ~/packages/jetson_wheels/
 ```
 
-執行前檢查會接受 Python 3.10（`cp310`）aarch64 的 `linux_aarch64` 與 `manylinux*_aarch64` wheel 標籤，並讀取每個 wheel 的 metadata、顯示實際版本，確認 PyTorch 與 Torchvision 的版本相依是否一致。每個必要套件只能存在一個符合的 wheel；若有多個版本，腳本會中止而不會任意選擇安裝。
+執行前檢查會接受 Python 3.10（`cp310`）aarch64 的 `linux_aarch64` 與 `manylinux*_aarch64` wheel 標籤，並讀取每個 wheel 的 metadata、顯示實際版本，確認 PyTorch 與 Torchvision 的版本相依是否一致。每個 Google Drive 必要套件只能存在一個符合的 wheel；若有多個版本，腳本會中止而不會任意選擇安裝。
 
-只有需要從 Google Drive 下載時，腳本才會自動安裝 `gdown`。
+只有需要從 Google Drive 下載時，腳本才會自動安裝 `gdown`。若系統 Python 沒有 `pip`，腳本會自動改用 `~/.cache/jetson-setup/gdown` 內的獨立 venv。
 
 > `cv2` 與 `tensorrt` 不會下載 wheel，腳本會將 Jetson 系統套件連結至 conda 環境。
 
@@ -66,13 +67,13 @@ a
 
 ```text
 Swap 不足時自動建立
-→ 自動下載並驗證 wheel
+→ 自動下載並驗證 Google Drive wheels
 → 執行前檢查
 → 系統基礎設定
 → 系統更新
 → OpenCV CUDA
 → Conda 環境
-→ 套件安裝
+→ 安裝 Drive wheels + 從 PyPI 安裝 cuda-python
 → 環境驗證
 ```
 
@@ -107,6 +108,7 @@ q) 👋 離開
 | `AUTO_DOWNLOAD_WHEELS` | `1` | 缺少 wheel 時自動從 Google Drive 下載 |
 | `GDRIVE_WHEELS_URL` | 內建 Drive 資料夾 | 自訂 Google Drive wheel 資料夾 |
 | `GDOWN_VERSION` | `6.1.0` | 自動下載使用的 gdown 版本 |
+| `CUDA_PYTHON_VERSION` | `12.6.2` | 從 PyPI 安裝的 cuda-python 版本 |
 | `AUTO_CREATE_SWAP` | `1` | `a` 模式在總 Swap 小於 8 GB 時自動新增 Swap |
 | `SWAPFILE_PATH` | `/swapfile8` | 自動建立的 Swap 路徑 |
 | `SWAPFILE_SIZE_GB` | `8` | 自動建立的 Swap 大小（GB） |
@@ -125,16 +127,17 @@ export AUTO_CREATE_SWAP=0
 
 **Google Drive 下載失敗**
 
+刪除獨立 downloader 環境後重新選 `a`：
+
 ```bash
 rm -rf ~/.cache/jetson-setup/gdown
-python3 -m pip install --user gdown==6.1.0
 ```
 
-重新執行安裝程式後再選 `a`。
+若系統 Python 沒有 `pip`，腳本會自動重新建立 venv。
 
 **找到多個 wheel 版本**
 
-在 `~/packages/jetson_wheels/` 中，每個必要套件只保留一個相容版本，再重新執行 `a`。
+在 `~/packages/jetson_wheels/` 中，每個 Google Drive 必要套件只保留一個相容版本，再重新執行 `a`。
 
 **既有 `/swapfile8` 無法啟用**
 
