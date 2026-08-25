@@ -5,7 +5,7 @@
 互動式 Bash 腳本，一鍵安裝 Jetson Orin Nano 深度學習環境。
 
 - **目標環境**：JetPack 6.2 / L4T R36.4.x / R36.5.x
-- **Python**：3.10（Miniconda、conda 環境）
+- **Python**：3.10（Miniforge、conda 環境）
 
 ---
 
@@ -50,6 +50,28 @@ Google Drive 內的套件：
 
 ---
 
+## 🐍 Conda / Miniforge
+
+腳本改用 Miniforge，不再使用 Miniconda。Miniforge 預設使用 conda-forge，因此建立環境時不需要接受 Anaconda 預設 repository 的 Terms of Service。
+
+目前固定版本：
+
+```text
+Miniforge 26.5.3-0
+Linux aarch64
+~/miniforge3
+```
+
+安裝前會驗證官方 SHA256，之後使用：
+
+```bash
+conda create -n tools --override-channels -c conda-forge python=3.10 -y
+```
+
+若系統已存在舊的 `~/miniconda3`，腳本不會自動刪除，只會改用 `~/miniforge3`。
+
+---
+
 ## 🚀 快速開始
 
 ```bash
@@ -72,7 +94,7 @@ Swap 不足時自動建立
 → 系統基礎設定
 → 系統更新
 → OpenCV CUDA
-→ Conda 環境
+→ Miniforge / Conda 環境
 → 安裝 Drive wheels + 從 PyPI 安裝 cuda-python
 → 環境驗證
 ```
@@ -88,9 +110,9 @@ Swap 不足時自動建立
 ```text
 p) 🔍 執行前檢查     (自動下載 wheels / swap / disk)
 1) 🔧 系統基礎設定    (snap fix + 中文輸入)
-2) 🔄 系統更新        (apt update + jtop fix)
+2) 🔄 系統更新        (apt update + jtop)
 3) 📷 OpenCV CUDA     (完整重新編譯，約 2 小時)
-4) 🐍 Conda 環境      (建立環境 + symlinks)
+4) 🐍 Conda 環境      (Miniforge + env + symlinks)
 5) 📦 套件安裝        (已驗證 wheels + pip)
 v) ✅ 環境驗證        (檢查套件 + GPU)
 a) ⚡ 全部執行        (自動準備 → p → 1 → 2 → 3 → 4 → 5 → v)
@@ -104,6 +126,8 @@ q) 👋 離開
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `CONDA_ENV` | `tools` | Conda 環境名稱 |
+| `CONDA_HOME` | `~/miniforge3` | Miniforge 安裝根目錄 |
+| `MINIFORGE_VERSION` | `26.5.3-0` | 固定的 Miniforge 版本 |
 | `PACKAGES_DIR` | `~/packages/jetson_wheels` | Wheel 目錄 |
 | `AUTO_DOWNLOAD_WHEELS` | `1` | 缺少 wheel 時自動從 Google Drive 下載 |
 | `GDRIVE_WHEELS_URL` | 內建 Drive 資料夾 | 自訂 Google Drive wheel 資料夾 |
@@ -134,6 +158,14 @@ rm -rf ~/.cache/jetson-setup/gdown
 ```
 
 若系統 Python 沒有 `pip`，腳本會自動重新建立 venv。
+
+**系統已有舊 Miniconda**
+
+腳本不會自動刪除。完整安裝驗證成功後，再自行確認是否需要移除：
+
+```bash
+ls -ld ~/miniconda3 ~/miniforge3
+```
 
 **找到多個 wheel 版本**
 
