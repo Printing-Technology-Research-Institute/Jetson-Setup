@@ -193,7 +193,11 @@ try:
 
     torch_version = metadata["torch"][0].split("+", 1)[0]
     tv_text = metadata["torchvision"][1]
-    match = re.search(r"^Requires-Dist:\s*torch\s*\(==([^\)]+)\)", tv_text, re.M | re.I)
+    match = re.search(
+        r"^Requires-Dist:\s*torch\s*(?:\(\s*)?==\s*([^\s;\)]+)",
+        tv_text,
+        re.M | re.I,
+    )
     if match:
         required = match.group(1).split("+", 1)[0]
         if required != torch_version:
@@ -642,14 +646,16 @@ PYEOF
 
     info "[3/6] Installing ML packages..."
     pip install scikit-learn
-    pip install ultralytics easyocr --no-deps
+    pip install ultralytics --no-deps
     pip install "torchmetrics==1.9"
     _check_numpy "after [3/6]"
 
     info "[4/6] Installing tool + EasyOCR dependencies..."
+    pip uninstall -y easyocr >/dev/null 2>&1 || true
     pip install fastrlock
     pip install "Pillow==10.0.0" pyyaml psutil matplotlib polars
     pip install "scikit-image==0.21.0" scipy python-bidi Shapely pyclipper ninja
+    pip install easyocr --no-deps
     _check_numpy "after [4/6]"
 
     python - <<'PYEOF'
