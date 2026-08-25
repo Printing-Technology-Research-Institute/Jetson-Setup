@@ -1,74 +1,26 @@
-# 🚀 Jetson Orin Nano — 開發環境安裝
+# 🚀 Jetson Orin Nano — 開發環境建置
 
 > 🌐 [English](./README.md)
 
-互動式 Bash 腳本，一鍵安裝 Jetson Orin Nano 深度學習環境。
+適用於 **NVIDIA Jetson Orin Nano** 的互動式 Bash 安裝工具，用於快速建立深度學習開發環境。
 
-- **目標環境**：JetPack 6.2 / L4T R36.4.x / R36.5.x
-- **Python**：3.10（Miniforge、conda 環境）
+- **目標平台：** JetPack 6.2 / L4T R36.4.x / R36.5.x
+- **Python：** 3.10
+- **環境管理：** Miniforge + Conda
+- **CUDA：** 使用 JetPack 提供的 CUDA 環境
 
 ---
 
-## 📋 環境需求
+## 📋 系統需求
 
 | 項目 | 需求 |
-|------|------|
+|---|---|
 | JetPack | 6.2（L4T R36.4.x / R36.5.x） |
 | 可用磁碟空間 | ≥ 20 GB |
-| 網路 | 第一次自動下載時需要 |
+| Swap | OpenCV CUDA 編譯建議 ≥ 8 GB |
+| 網路 | 第一次安裝時需要 |
 
-編譯 OpenCV CUDA 需要總 Swap ≥ 8 GB。使用者選擇 `a` 時，如果目前 Swap 不足，安裝程式會自動新增 `/swapfile8` 8 GB Swap，不需要手動處理。
-
----
-
-## 📦 Jetson Wheel
-
-當必要 wheel 缺少時，安裝程式會自動從 Google Drive 下載整理好的 JetPack 6.2 / CUDA 12.6 wheel 組合，不需要手動搬移檔案。
-
-📁 [Jetson Wheels](https://drive.google.com/drive/folders/1zOi0G1CkETV6aR9FI9y4iTQOurEH2T1v?usp=sharing)
-
-Google Drive 內的套件：
-
-- PyTorch
-- Torchvision
-- ONNX Runtime GPU
-- CuPy（CUDA 12x）
-
-`cuda-python` 不要求放在 Google Drive。腳本會在步驟 5 建立好 Python 3.10 conda 環境後，自動從 PyPI 安裝 `cuda-python==12.6.2`。
-
-下載後會存放於：
-
-```text
-~/packages/jetson_wheels/
-```
-
-執行前檢查會接受 Python 3.10（`cp310`）aarch64 的 `linux_aarch64` 與 `manylinux*_aarch64` wheel 標籤，並讀取每個 wheel 的 metadata、顯示實際版本，確認 PyTorch 與 Torchvision 的版本相依是否一致。每個 Google Drive 必要套件只能存在一個符合的 wheel；若有多個版本，腳本會中止而不會任意選擇安裝。
-
-只有需要從 Google Drive 下載時，腳本才會自動安裝 `gdown`。若系統 Python 沒有 `pip`，腳本會自動改用 `~/.cache/jetson-setup/gdown` 內的獨立 venv。
-
-> `cv2` 與 `tensorrt` 不會下載 wheel，腳本會將 Jetson 系統套件連結至 conda 環境。
-
----
-
-## 🐍 Conda / Miniforge
-
-腳本改用 Miniforge，不再使用 Miniconda。Miniforge 預設使用 conda-forge，因此建立環境時不需要接受 Anaconda 預設 repository 的 Terms of Service。
-
-目前固定版本：
-
-```text
-Miniforge 26.5.3-0
-Linux aarch64
-~/miniforge3
-```
-
-安裝前會驗證官方 SHA256，之後使用：
-
-```bash
-conda create -n tools --override-channels -c conda-forge python=3.10 -y
-```
-
-若系統已存在舊的 `~/miniconda3`，腳本不會自動刪除，只會改用 `~/miniforge3`。
+當選擇 `a` 時，如果系統目前的 Swap 不足，安裝程式會自動建立額外 **8 GB** 的 `/swapfile8`。
 
 ---
 
@@ -79,66 +31,139 @@ chmod +x jetson_setup.sh
 bash jetson_setup.sh
 ```
 
-全新設備直接選：
+全新 Jetson 建議直接選擇：
 
 ```text
 a
 ```
 
-`a` 會自動完成整個準備與安裝流程：
+選項 `a` 會執行完整安裝流程：
 
 ```text
-Swap 不足時自動建立
-→ 自動下載並驗證 Google Drive wheels
-→ 執行前檢查
+必要時自動建立 Swap
+→ 自動下載並驗證 Jetson wheels
+→ 環境預檢
 → 系統基礎設定
 → 系統更新
-→ OpenCV CUDA
+→ OpenCV CUDA 編譯
 → Miniforge / Conda 環境
-→ 安裝 Drive wheels + 從 PyPI 安裝 cuda-python
+→ 安裝 Jetson wheels + cuda-python
 → 環境驗證
 ```
 
-不需要先執行 `p`，也不需要手動準備 wheel 或 Swap。
+不需要先手動執行 `p`，也不需要事先準備 wheel 或 Swap。
 
-> 具有破壞性或安全風險的操作仍會要求確認，例如重新編譯 OpenCV，以及未設定 SHA256 時執行下載的 OpenCV 編譯腳本。
+> 具有破壞性或安全風險的操作仍會要求使用者確認，例如重新編譯 OpenCV，或在未設定 SHA256 的情況下執行外部 OpenCV build script。
 
 ---
 
-## 🛠 選單
+## 🛠 安裝選單
 
 ```text
-p) 🔍 執行前檢查     (自動下載 wheels / swap / disk)
-1) 🔧 系統基礎設定    (snap fix + 中文輸入)
-2) 🔄 系統更新        (apt update + jtop)
-3) 📷 OpenCV CUDA     (完整重新編譯，約 2 小時)
-4) 🐍 Conda 環境      (Miniforge + env + symlinks)
-5) 📦 套件安裝        (已驗證 wheels + pip)
-v) ✅ 環境驗證        (檢查套件 + GPU)
-a) ⚡ 全部執行        (自動準備 → p → 1 → 2 → 3 → 4 → 5 → v)
-q) 👋 離開
+p) 🔍 Preflight check   (自動下載 wheels / Swap / 磁碟檢查)
+1) 🔧 System base       (Snap 修正 + 中文輸入法)
+2) 🔄 System update     (apt update + jtop)
+3) 📷 OpenCV CUDA       (完整重新編譯，約 2 小時)
+4) 🐍 Conda env         (Miniforge + env + symlinks)
+5) 📦 Package install   (已驗證 wheels + pip packages)
+v) ✅ Validate          (套件 + GPU 驗證)
+a) ⚡ Run all           (auto-prepare → p → 1 → 2 → 3 → 4 → 5 → v)
+q) 👋 Quit
 ```
 
 ---
 
-## ⚙️ 設定變數
+## 📦 Jetson Wheels
+
+當必要套件缺少時，安裝程式會自動從 Google Drive 下載已整理好的 **JetPack 6.2 / CUDA 12.6** wheel 套件。
+
+📁 [Jetson Wheels](https://drive.google.com/drive/folders/1zOi0G1CkETV6aR9FI9y4iTQOurEH2T1v?usp=sharing)
+
+必要 wheel：
+
+- PyTorch
+- Torchvision
+- ONNX Runtime GPU
+- CuPy CUDA 12x
+
+`cuda-python` 不放在 Drive bundle 中，而是另外從 PyPI 安裝：
+
+```text
+cuda-python==12.6.2
+```
+
+下載後的 wheels 會存放於：
+
+```text
+~/packages/jetson_wheels/
+```
+
+Preflight check 會：
+
+- 接受 Python 3.10 (`cp310`) aarch64 wheels
+- 接受 `linux_aarch64` 與 `manylinux*_aarch64` tag
+- 讀取 wheel metadata 並顯示套件版本
+- 在存在明確 dependency pin 時驗證 PyTorch / Torchvision 相容性
+- 若同一套件存在多個符合版本，會直接拒絕繼續
+
+只有在需要從 Google Drive 下載時才會自動安裝 `gdown`。
+
+如果 system Python 沒有 `pip`，安裝程式會建立隔離環境：
+
+```text
+~/.cache/jetson-setup/gdown
+```
+
+> `cv2` 與 `tensorrt` 不會以 wheel 下載。安裝程式會將 Jetson 系統套件連結到 Conda environment。
+
+---
+
+## 🐍 Miniforge / Conda
+
+本專案使用 **Miniforge**，不使用 Miniconda。這樣建立環境時可直接使用 `conda-forge`，不需要接受 Anaconda repository Terms of Service。
+
+固定版本：
+
+```text
+Miniforge 26.5.3-0
+Linux aarch64
+~/miniforge3
+```
+
+安裝前會驗證官方 SHA256，並建立 `tools` environment：
+
+```bash
+conda create -n tools --override-channels -c conda-forge python=3.10 -y
+```
+
+如果系統中已存在舊的 `~/miniconda3`，安裝程式不會自動刪除。
+
+預設使用：
+
+```text
+~/miniforge3
+```
+
+---
+
+## ⚙️ 設定參數
 
 | 變數 | 預設值 | 說明 |
-|------|--------|------|
-| `CONDA_ENV` | `tools` | Conda 環境名稱 |
-| `CONDA_HOME` | `~/miniforge3` | Miniforge 安裝根目錄 |
-| `MINIFORGE_VERSION` | `26.5.3-0` | 固定的 Miniforge 版本 |
-| `PACKAGES_DIR` | `~/packages/jetson_wheels` | Wheel 目錄 |
-| `AUTO_DOWNLOAD_WHEELS` | `1` | 缺少 wheel 時自動從 Google Drive 下載 |
-| `GDRIVE_WHEELS_URL` | 內建 Drive 資料夾 | 自訂 Google Drive wheel 資料夾 |
-| `GDOWN_VERSION` | `6.1.0` | 自動下載使用的 gdown 版本 |
-| `CUDA_PYTHON_VERSION` | `12.6.2` | 從 PyPI 安裝的 cuda-python 版本 |
-| `AUTO_CREATE_SWAP` | `1` | `a` 模式在總 Swap 小於 8 GB 時自動新增 Swap |
+|---|---|---|
+| `CONDA_ENV` | `tools` | Conda environment 名稱 |
+| `CONDA_HOME` | `~/miniforge3` | Miniforge 安裝位置 |
+| `MINIFORGE_VERSION` | `26.5.3-0` | 固定 Miniforge 版本 |
+| `PACKAGES_DIR` | `~/packages/jetson_wheels` | Jetson wheel 目錄 |
+| `AUTO_DOWNLOAD_WHEELS` | `1` | 自動下載缺少的 wheels |
+| `GDRIVE_WHEELS_URL` | 內建 Drive folder | 覆寫 Google Drive wheel 來源 |
+| `GDOWN_VERSION` | `6.1.0` | `gdown` 版本 |
+| `CUDA_PYTHON_VERSION` | `12.6.2` | 從 PyPI 安裝的 `cuda-python` 版本 |
+| `AUTO_CREATE_SWAP` | `1` | Swap 不足時自動補足 |
 | `SWAPFILE_PATH` | `/swapfile8` | 自動建立的 Swap 路徑 |
-| `SWAPFILE_SIZE_GB` | `8` | 自動建立的 Swap 大小（GB） |
-| `OPENCV_SCRIPT_SHA256` | 空 | OpenCV 編譯腳本的選填 SHA256 |
+| `SWAPFILE_SIZE_GB` | `8` | 自動建立的 Swap 大小 |
+| `OPENCV_SCRIPT_SHA256` | _(空白)_ | OpenCV build script 的可選 SHA256 |
 
-需要時可以關閉自動下載或自動建立 Swap：
+如需關閉自動下載 wheel 或自動建立 Swap：
 
 ```bash
 export AUTO_DOWNLOAD_WHEELS=0
@@ -147,44 +172,116 @@ export AUTO_CREATE_SWAP=0
 
 ---
 
-## 🐛 常見問題
+## 📷 Basler pylon
 
-**Google Drive 下載失敗**
+### 下載
 
-刪除獨立 downloader 環境後重新選 `a`：
+Basler 官方軟體下載頁：
+
+📁 [Basler pylon downloads](https://www.baslerweb.com/en-us/downloads/software/)
+
+Google Drive：
+
+📁 [Google Drive](https://drive.google.com/drive/folders/1zOi0G1CkETV6aR9FI9y4iTQOurEH2T1v?usp=sharing)
+
+### 安裝 pylon 25.10.2 ARM64
+
+假設安裝檔位於 `~/Downloads`：
+
+```bash
+cd ~/Downloads
+
+tar -xzf pylon-25.10.2_linux-aarch64_debs.tar.gz
+
+sudo apt update
+
+sudo apt install   ./codemeter-lite_8.20.6558.501_arm64.deb   ./pylon_25.10.2-deb0_arm64.deb
+```
+
+確認是否安裝成功：
+
+```bash
+dpkg -l | grep -Ei "pylon|codemeter"
+```
+
+---
+
+## 🐛 問題排查
+
+### Google Drive 下載失敗
+
+刪除隔離的 downloader environment，再重新執行 `a`：
 
 ```bash
 rm -rf ~/.cache/jetson-setup/gdown
 ```
 
-若系統 Python 沒有 `pip`，腳本會自動重新建立 venv。
+需要時安裝程式會自動重新建立。
 
-**系統已有舊 Miniconda**
+### 系統存在舊 Miniconda
 
-腳本不會自動刪除。完整安裝驗證成功後，再自行確認是否需要移除：
+安裝程式不會自動刪除。
+
+刪除前先確認兩個目錄：
 
 ```bash
 ls -ld ~/miniconda3 ~/miniforge3
 ```
 
-**找到多個 wheel 版本**
+### 偵測到多個 wheel 版本
 
-在 `~/packages/jetson_wheels/` 中，每個 Google Drive 必要套件只保留一個相容版本，再重新執行 `a`。
+每個必要套件在下列目錄中只保留一個相容版本：
 
-**既有 `/swapfile8` 無法啟用**
+```text
+~/packages/jetson_wheels/
+```
 
-安裝程式會刻意拒絕覆寫既有但不是有效 Swap 的檔案。請先人工確認該檔案用途，再決定是否刪除或替換。
+完成後重新執行安裝程式。
 
-**cv2 沒有 CUDA**
+### `/swapfile8` 無法啟用
+
+如果 `/swapfile8` 已存在但不是有效 Swap，安裝程式不會直接覆蓋。
+
+請先確認檔案內容與用途，再決定是否刪除或重新建立。
+
+### `cv2` 沒有 CUDA 支援
+
+檢查實際載入的 OpenCV 路徑：
 
 ```bash
 python -c "import cv2; print(cv2.__file__)"
 ```
 
-應指向 Jetson 系統的 OpenCV 套件；若不正確，重新執行步驟 4。
+應使用 Jetson 系統的 OpenCV。
 
-**tensorrt import 失敗**
+如果不是，重新執行 step 4。
+
+### `tensorrt` import 失敗
+
+設定 Jetson library path：
 
 ```bash
 export LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 ```
+
+---
+
+## 🔒 環境凍結
+
+完成 Jetson 環境建置後，建議鎖定 NVIDIA、CUDA、TensorRT 與 Basler 相關套件，降低系統自動更新造成 driver 或 package 相容性問題的風險。
+
+📄 [Jetson Environment Freeze Guide](./Envfreeze.md)
+
+---
+
+## ⚠️ 安全注意事項
+
+此安裝程式可能執行下列系統層級操作：
+
+- 建立 Swap
+- 安裝 system packages
+- 重新編譯 OpenCV
+- 修改 Conda shell 設定
+- 將 Jetson system Python packages 連結到 Conda environment
+
+執行具有破壞性的操作前，請確認提示內容。
