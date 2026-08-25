@@ -60,6 +60,7 @@ GDRIVE_WHEELS_URL="${GDRIVE_WHEELS_URL:-https://drive.google.com/drive/folders/1
 AUTO_DOWNLOAD_WHEELS="${AUTO_DOWNLOAD_WHEELS:-1}"
 GDOWN_VERSION="${GDOWN_VERSION:-6.1.0}"
 GDOWN_BIN=""
+CUDA_PYTHON_VERSION="${CUDA_PYTHON_VERSION:-12.6.2}"
 
 AUTO_CREATE_SWAP="${AUTO_CREATE_SWAP:-1}"
 SWAPFILE_PATH="${SWAPFILE_PATH:-/swapfile8}"
@@ -69,15 +70,15 @@ SWAPFILE_SIZE_GB="${SWAPFILE_SIZE_GB:-8}"
 # e.g. export OPENCV_SCRIPT_SHA256=$(sha256sum OpenCV-4-11-0.sh | awk '{print $1}')
 OPENCV_SCRIPT_SHA256="${OPENCV_SCRIPT_SHA256:-}"
 
-# One source of truth for preflight and installation.
+# Jetson-specific wheel bundle stored in Google Drive.
+# cuda-python is intentionally installed from NVIDIA's PyPI wheel in step 5.
 declare -A REQUIRED_WHEELS=(
     ["torch"]="torch-*-cp310-cp310-*aarch64.whl"
     ["torchvision"]="torchvision-*-cp310-cp310-*aarch64.whl"
     ["onnxruntime_gpu"]="onnxruntime_gpu-*-cp310-cp310-*aarch64.whl"
-    ["cuda_python"]="cuda_python-*-cp310-cp310-*aarch64.whl"
     ["cupy_cuda12x"]="cupy_cuda12x-*-cp310-cp310-*aarch64.whl"
 )
-WHEEL_INSTALL_ORDER=(torch torchvision onnxruntime_gpu cuda_python cupy_cuda12x)
+WHEEL_INSTALL_ORDER=(torch torchvision onnxruntime_gpu cupy_cuda12x)
 
 wheel_matches() {
     local pkg="$1"
@@ -103,13 +104,18 @@ ensure_gdown() {
         return 0
     fi
 
+    local gdown_venv="$HOME/.cache/jetson-setup/gdown"
+    if [[ -x "$gdown_venv/bin/gdown" ]]; then
+        GDOWN_BIN="$gdown_venv/bin/gdown"
+        return 0
+    fi
+
     info "Installing gdown $GDOWN_VERSION for Google Drive wheel download..."
-    if python3 -m pip install --user "gdown==$GDOWN_VERSION"; then
+    if python3 -m pip --version &>/dev/null && python3 -m pip install --user "gdown==$GDOWN_VERSION"; then
         GDOWN_BIN="$HOME/.local/bin/gdown"
     else
-        warn "User install failed. Falling back to an isolated venv."
+        warn "System Python pip unavailable. Using an isolated gdown venv."
         run sudo apt-get install -y python3-venv
-        local gdown_venv="$HOME/.cache/jetson-setup/gdown"
         python3 -m venv "$gdown_venv"
         "$gdown_venv/bin/pip" install "gdown==$GDOWN_VERSION"
         GDOWN_BIN="$gdown_venv/bin/gdown"
@@ -153,7 +159,6 @@ expected_names = {
     "torch": "torch",
     "torchvision": "torchvision",
     "onnxruntime_gpu": "onnxruntime-gpu",
-    "cuda_python": "cuda-python",
     "cupy_cuda12x": "cupy-cuda12x",
 }
 
@@ -298,6 +303,8 @@ step_preflight() {
             fail=1
         fi
     done
+
+    echo -e "  ${GREEN}OK${NC}  [managed]  cuda_python  ->  PyPI cuda-python==$CUDA_PYTHON_VERSION (installed in step 5)"
 
     if (( fail == 0 )); then
         echo -e "\n${BOLD}-- Wheel Bundle Validation --${NC}"
@@ -571,7 +578,7 @@ step7_install_packages() {
     pip install "numpy==1.23.5"
     _check_numpy "after [1/6]"
 
-    info "[2/6] Installing validated Jetson wheels (aarch64)..."
+    info "[2/6] Installing validated Jetson wheels + cuda-python..."
     validate_wheel_bundle || {
         error "Required wheel bundle is missing or incompatible. Run preflight check p first."
         return 1
@@ -586,7 +593,16 @@ step7_install_packages() {
         info "  Installing: $(basename "$found")"
         pip install "$found" --no-deps
     done
-    success "Jetson wheel bundle installed."
+
+    info "  Installing: cuda-python==$CUDA_PYTHON_VERSION from PyPI"
+    pip install "cuda-python==$CUDA_PYTHON_VERSION"
+    python - <<'PYEOF'
+from importlib.metadata import version
+import cuda
+print(f"  cuda-python {version('cuda-python')} OK")
+PYEOF
+
+    success "Jetson wheel bundle + cuda-python installed."
     _check_numpy "after [2/6]"
 
     info "[3/6] Installing ML packages..."
@@ -632,6 +648,7 @@ step_validate() {
     echo -e "\n${BOLD}-- Package Versions --${NC}"
     python - <<'PYEOF'
 import sys
+from importlib.metadata import version
 
 results = []
 
@@ -649,6 +666,7 @@ chk("torch", lambda: __import__("torch").__version__)
 chk("torchvision", lambda: __import__("torchvision").__version__)
 chk("tensorrt", lambda: __import__("tensorrt").__version__)
 chk("onnxruntime", lambda: __import__("onnxruntime").__version__)
+chk("cuda-python", lambda: (__import__("cuda"), version("cuda-python"))[1])
 chk("sklearn", lambda: __import__("sklearn").__version__)
 chk("ultralytics", lambda: __import__("ultralytics").__version__)
 chk("cupy", lambda: __import__("cupy").__version__)
