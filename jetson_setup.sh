@@ -499,6 +499,12 @@ step5_env_setup() {
         info "Miniforge already installed: $CONDA_HOME"
     fi
 
+    if "$CONDA_HOME/bin/conda" init bash >/dev/null; then
+        success "Conda initialized for bash. New terminals can run: conda activate $CONDA_ENV"
+    else
+        warn "conda init bash failed; setup will continue using the local shell hook."
+    fi
+
     source "$CONDA_HOME/etc/profile.d/conda.sh" || {
         error "Conda init failed. Check install path: $CONDA_HOME"
         return 1
@@ -640,10 +646,16 @@ PYEOF
     pip install "torchmetrics==1.9"
     _check_numpy "after [3/6]"
 
-    info "[4/6] Installing tool dependencies..."
+    info "[4/6] Installing tool + EasyOCR dependencies..."
     pip install fastrlock
     pip install "Pillow==10.0.0" pyyaml psutil matplotlib polars
+    pip install "scikit-image==0.21.0" scipy python-bidi Shapely pyclipper ninja
     _check_numpy "after [4/6]"
+
+    python - <<'PYEOF'
+import easyocr
+print(f"  easyocr {easyocr.__version__} OK")
+PYEOF
 
     info "[5/6] Final NumPy pin check..."
     _check_numpy "final"
@@ -705,7 +717,7 @@ chk("polars", lambda: __import__("polars").__version__)
 chk("pycuda", lambda: __import__("pycuda").VERSION_TEXT)
 chk("torchmetrics", lambda: __import__("torchmetrics").__version__)
 
-optional = {"easyocr", "polars", "pycuda", "torchmetrics"}
+optional = {"pycuda"}
 for ok, label, val in results:
     if ok:
         tag = "\033[32mOK\033[0m"
@@ -742,6 +754,10 @@ def run(label, fn):
     except Exception as e:
         print(f"  \033[31mNG\033[0m  {label}: {e}")
 
+def test_autocast():
+    with torch.amp.autocast("cuda"):
+        _ = torch.ones(1, device="cuda") * 2
+
 run("NumPy array ops", lambda: np.zeros((224, 224, 3), dtype=np.uint8))
 run(
     "cv2 CUDA backend",
@@ -749,7 +765,7 @@ run(
     if cv2.cuda.getCudaEnabledDeviceCount() == 0 else None,
 )
 run("torch CUDA tensor", lambda: torch.zeros(1).cuda())
-run("torch autocast", lambda: torch.cuda.amp.autocast().__enter__())
+run("torch autocast", test_autocast)
 PYEOF
 
     echo -e "\n${BOLD}-- ONNX Runtime GPU --${NC}"
