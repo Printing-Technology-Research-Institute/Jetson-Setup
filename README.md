@@ -76,7 +76,7 @@ auto-create swap if needed
 → validation
 ```
 
-No separate `p` step or manual wheel preparation is required.
+No separate `p` step or manual wheel/Swap preparation is required.
 
 > Destructive or security-sensitive operations still request confirmation, such as rebuilding OpenCV or running the OpenCV build script without a configured SHA256.
 
